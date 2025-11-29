@@ -90,19 +90,26 @@ public class IrisVoxyRenderPipelineData {
 
 
     public static IrisVoxyRenderPipelineData buildPipeline(IrisRenderingPipeline ipipe, IrisShaderPatch patch, CustomUniforms cu, ShaderStorageBufferHolder ssboHolder) {
-        var uniforms = createUniformLayoutStructAndUpdater(createUniformSet(cu, patch));
+        try {
+            var uniforms = createUniformLayoutStructAndUpdater(createUniformSet(cu, patch));
 
-        var imageSet = createImageSet(ipipe, patch);
+            var imageSet = createImageSet(ipipe, patch);
 
-        var ssboSet = createSSBOLayouts(patch.getSSBOs(), ssboHolder);
+            var ssboSet = createSSBOLayouts(patch.getSSBOs(), ssboHolder);
 
-        var opaqueDrawTargets = getDrawBuffers(patch.getOpqaueTargets(), ipipe.getFlippedAfterPrepare(), ((IrisRenderingPipelineAccessor)ipipe).getRenderTargets());
-        var translucentDrawTargets = getDrawBuffers(patch.getTranslucentTargets(), ipipe.getFlippedAfterPrepare(), ((IrisRenderingPipelineAccessor)ipipe).getRenderTargets());
+            var opaqueDrawTargets = getDrawBuffers(patch.getOpqaueTargets(), ipipe.getFlippedAfterPrepare(), ((IrisRenderingPipelineAccessor) ipipe).getRenderTargets());
+            var translucentDrawTargets = getDrawBuffers(patch.getTranslucentTargets(), ipipe.getFlippedAfterPrepare(), ((IrisRenderingPipelineAccessor) ipipe).getRenderTargets());
 
 
-
-        //TODO: need to transform the string patch with the uniform decleration aswell as sampler declerations
-        return new IrisVoxyRenderPipelineData(patch, opaqueDrawTargets, translucentDrawTargets, uniforms, patch.createBlendSetup(), imageSet, ssboSet);
+            //TODO: need to transform the string patch with the uniform decleration aswell as sampler declerations
+            return new IrisVoxyRenderPipelineData(patch, opaqueDrawTargets, translucentDrawTargets, uniforms, patch.createBlendSetup(), imageSet, ssboSet);
+        } catch (IllegalStateException e) {
+            if (e.getMessage().contains("destroyed")) {
+                Logger.error("Failed to build voxy iris pipeline, render targets destroyed: " + e.getMessage());
+                return null;
+            }
+            throw e;
+        }
     }
 
     private static int[] getDrawBuffers(int[] targets, ImmutableSet<Integer> stageWritesToAlt, RenderTargets rt) {
@@ -499,7 +506,18 @@ public class IrisVoxyRenderPipelineData {
             for (int j = 0; j < samplers.length; j++) {
                 int unit = j+base;
                 var ts = samplers[j];
-                glBindTextureUnit(unit, ts.texture.getAsInt());
+                int id;
+                try {
+                    id = ts.texture.getAsInt();
+                } catch (IllegalStateException e) {
+                    if (e.getMessage().contains("destroyed")) {
+                        //Can happen if the render targets are destroyed
+                        id = 0;
+                    } else {
+                        throw e;
+                    }
+                }
+                glBindTextureUnit(unit, id);
                 if (ts.sampler != -1) {
                     glBindSampler(unit, ts.sampler);
                 }//TODO: might need to bind sampler 0
